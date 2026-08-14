@@ -4,14 +4,14 @@
 # tree) registers the `IdeWindowProvider`/`IdeEditorProvider` roles; without
 # a shell every `ctx.ide` operation settles to its documented neutral result.
 
-- insert:
-    # The ide workbench frame owns 'root' in the ide profile; the browser
-    # three-column frame (ui-layout) is disabled so the two root owners never
-    # collide. The web-surface child seats are re-declared by ide-layout, so
-    # existing web plugins (ui-sidebar, ui-conversation, ...) keep working.
-    - id: ui-layout
-      disabled: true
+# The ide workbench frame owns 'root' in the ide profile; the browser
+# three-column frame (ui-layout) is disabled so the two root owners never
+# collide. The web-surface child seats are re-declared by ide-layout, so
+# existing web plugins (ui-sidebar, ui-conversation, ...) keep working.
+- id: ui-layout
+  disabled: true
 
+- insert:
     # The IDE surface seam: window and editor provider roles with neutral
     # no-provider results.
     - id: ide

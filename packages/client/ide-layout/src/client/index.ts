@@ -10,11 +10,12 @@
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
-// Type-only: pulls ui-layout's SlotMap entries for the web-surface seats and
-// the exported LayoutController for the ctx.layout face.
+// Type-only: pulls ui-layout's SlotMap entries and the ILayout contract for
+// the ctx.layout face. Value imports of another plugin's symbols are
+// forbidden by the client purity rule; the face implementation is local.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { IdeWorkbench } from './IdeWorkbench.tsx'
+import { IdeLayoutController } from './service.ts'
 import { createIdeLayoutStore } from './stores.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -42,7 +43,7 @@ export const inject = ['slots']
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  const layout = new LayoutController()
+  const layout = new IdeLayoutController()
   ctx.effect(() => {
     const disposeService = ctx.reflect.provide('layout', layout)
     const disposeRegistration = ctx.slots.register({

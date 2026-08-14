@@ -1,14 +1,34 @@
-/** Ide workbench root registration and its layout face wiring. */
+/** Ide workbench root registration, its layout face wiring, and the face controller. */
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ide-layout/client'
+import { IdeLayoutController } from '../src/client/service.ts'
 
 async function bench() {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   return { ctx, slots: ctx.get('slots') as SlotRegistry }
 }
+
+describe('IdeLayoutController', () => {
+  it('forwards gestures to the attached panel actions and throws unwired', () => {
+    const controller = new IdeLayoutController()
+    expect(() => controller.toggleSidebar()).toThrow('panel actions not wired')
+    const actions = {
+      toggleSidebar: vi.fn(),
+      openDetails: vi.fn(),
+      closeDetails: vi.fn(),
+    }
+    controller.attachPanels(actions as never)
+    controller.toggleSidebar()
+    controller.openDetails()
+    controller.closeDetails()
+    expect(actions.toggleSidebar).toHaveBeenCalledOnce()
+    expect(actions.openDetails).toHaveBeenCalledOnce()
+    expect(actions.closeDetails).toHaveBeenCalledOnce()
+  })
+})
 
 describe('ide-layout apply', () => {
   it('declares only the services it uses', () => {
