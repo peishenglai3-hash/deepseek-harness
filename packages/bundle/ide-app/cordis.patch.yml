@@ -1,0 +1,23 @@
+# The dsh-ide-app bundle patch: the IDE surface over the dsh-web-app layer.
+# Applied after dsh-web-app's rows; rows here add the ide seam and the IDE
+# client roster without replacing any web row. The desktop shell (out of
+# tree) registers the `IdeWindowProvider`/`IdeEditorProvider` roles; without
+# a shell every `ctx.ide` operation settles to its documented neutral result.
+
+- insert:
+    # The ide workbench frame owns 'root' in the ide profile; the browser
+    # three-column frame (ui-layout) is disabled so the two root owners never
+    # collide. The web-surface child seats are re-declared by ide-layout, so
+    # existing web plugins (ui-sidebar, ui-conversation, ...) keep working.
+    - id: ui-layout
+      disabled: true
+
+    # The IDE surface seam: window and editor provider roles with neutral
+    # no-provider results.
+    - id: ide
+      name: '@deepseek-ai/dsh-ide'
+
+    # The IDE workbench frame (activity bar / side panel / editor group /
+    # bottom panel) mounts in the browser roster in place of ui-layout.
+    - id: client-ide-layout
+      name: '@deepseek-ai/dsh-client-ide-layout'
