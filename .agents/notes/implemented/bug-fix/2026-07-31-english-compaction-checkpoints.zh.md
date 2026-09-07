@@ -12,7 +12,7 @@ Status: implemented
 
 `COMPACTION_INSTRUCTION` 要求生成英语的内部工程检查点。它要求模型在必要时翻译叙述性源材料，同时保留精确的字面量；这包括路径、命令、错误、标识符、签名，以及精确性重要时的引用措辞。检查点的标题及简洁的工程项目符号仍沿用既有的结构化格式。
 
-这项要求被整合到尾部压缩指令的第一句话中。回放的系统提示词、工具和对话历史与已路由请求保持字节级一致，因此该变更保留 [压缩摘要前缀缓存说明](2026-07-21-compaction-summary-prefix-cache-reuse.md) 所确立的前缀缓存复用。
+这项要求被整合到尾部压缩指令的第一句话中。回放的系统提示词、工具和对话历史与已路由请求保持字节级一致，因此该变更保留 [压缩摘要前缀缓存说明](2026-07-21-compaction-summary-prefix-cache-reuse.zh.md) 所确立的前缀缓存复用。
 
 ## 考虑过的替代方案
 
@@ -25,4 +25,4 @@ Status: implemented
 
 - 新检查点会将叙述性上下文规范化为英语，同时保留未来工具使用和代码工作所依赖的精确字符串。
 - 既有检查点结构、压缩路由和缓存对齐保持不变；只有最后一条 user 指令不同。
-- 直接摘要调用仍不纳入 transcript（文本记录）快照，因为它不会发出 `assistant/chunk` 事件。真实循环回归改为断言摘要请求收到的精确最终指令。
+- 直接 summarization call 仍不纳入 transcript snapshot，因为它不会发出 Agent-owned Assistant settlement。真实 loop regression 改为断言 summarization request 收到的精确最终 instruction。

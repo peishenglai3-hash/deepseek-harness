@@ -29,7 +29,7 @@ Status: implemented
 - **保留摘要器系统提示词但复用其余部分**——否决：system 槽位正是提供方最先做缓存的 token 区域，因此一个不同的摘要器系统提示词无论后面跟着什么都会使整个前缀失效。只有把指令移离前端才能恢复缓存。
 - **只发送被遮蔽区域而不带 `system`/`tools` 头部**——否决：头部不同的序列在第一个 token 处仍然与已缓存请求分叉，因此缓存效果并不更好，反而丢失了摘要所需的框架。
 - **从摘要请求中省略 `tools`**（模型从不调用任何工具）——否决：工具 schema 是已缓存 token 序列的一部分；省略它们会让后续每个 token 失去对齐，破坏复用。
-- **为快照回放专门建立一个发出 `assistant/chunk` 的摘要子会话**——否决：持久的 `compaction/summary` 事件会记录成功本地调用的位置和完整输出，而显式调用标记可防止回放把模板或远程输出当作本地流。
+- **为 snapshot replay 专门建立 Agent-backed summarization sub-session**——否决：持久 `compaction/summary` event 会记录成功本地调用的位置与完整输出，显式 call marker 可防止 replay 把 template 或 remote output 当作本地 stream。仅为获得 Assistant settlement 而创建 sub-session 会增加无关 lifecycle。
 
 ## 后果
 
@@ -42,4 +42,4 @@ Status: implemented
 
 - **单元：** `compaction-basic.spec.ts` 断言辅助调用转发 `system`/`tools`/前导消息，并把压缩指令作为最后一条消息追加，且 `compactRegion` 回放最新的已路由 header 前缀。现有的内容断言通过回放的消息而非 transcript 字符串来读取摘要器输入。
 - **循环：** `compact-loop-repro.spec.ts` 依据摘要请求尾部 user 消息中的压缩指令对其分类，溢出恢复测试则继续在真实循环中固定对话请求与摘要请求的数量。
-- **快照：** 无密钥回放会从带标记的 `compaction/summary` 重建一条规范成功流；[compaction-seam Agent Note](../feature/2026-06-18-compaction-capability-seam.md) 负责持久标记约定。
+- **快照：** 无密钥回放会从带标记的 `compaction/summary` 重建一条规范成功流；[compaction-seam Agent Note](../feature/2026-06-18-compaction-capability-seam.zh.md) 负责持久标记约定。

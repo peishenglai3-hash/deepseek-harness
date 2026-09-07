@@ -11,14 +11,14 @@ import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
-  launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
+  launchWebScaffold, parseSeedFixture, renderSeedFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
-const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/message-actions', import.meta.url))
+const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/message-actions', import.meta.url))
 // Borrowed read-only: this scenario needs any settled user+assistant pair, not
 // a new recording (workspace-management / sidebar-scrollbar pattern).
-const SEED = fileURLToPath(new URL('./snapshots/seeded-history/seed.jsonl', import.meta.url))
+const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v2.jsonl', import.meta.url))
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
 const FORK_EXPECTED = join(SNAPSHOT_DIR, 'fork.expected.md')
 const MODE = webSnapshotMode()
@@ -36,36 +36,103 @@ const SECOND_PROMPT = 'Now give the final answer.'
  * @returns A contiguous, closed two-turn fixture.
  */
 function completedTailFixture(raw: string): string {
-  const kept: string[] = []
-  for (const line of raw.trimEnd().split('\n')) {
-    const row = JSON.parse(line) as {
-      type: string
-      seq?: number
-      seq0?: number
-      data?: { content?: unknown[] }
+  const decoded = parseSeedFixture(raw)
+  const stepTwoStart = decoded.events.findIndex(event =>
+    event.type === 'step/start' && event.data.turn === 1 && event.data.step === 2)
+  if (stepTwoStart < 0) throw new Error('borrowed fixture has no step-two start')
+  const kept = decoded.events.slice(0, stepTwoStart + 1).map((event) => {
+    if (event.type !== 'assistant/message' || event.data.turn !== 1 || event.data.step !== 1) return event
+    const finish = event.data.stream.findIndex(record =>
+      record.type === 'chunk' && record.chunk.type === 'finish')
+    if (finish < 0) throw new Error('borrowed step-one Assistant message has no finish record')
+    const finishRecord = event.data.stream[finish]!
+    if (finishRecord.type !== 'chunk') throw new Error('borrowed step-one finish is not a chunk record')
+    const streamTime = finishRecord.time
+    return {
+      ...event,
+      data: {
+        ...event.data,
+        message: {
+          ...event.data.message,
+          content: [...event.data.message.content, { type: 'text' as const, text: MID_TURN_TEXT }],
+        },
+        stream: [
+          ...event.data.stream.slice(0, finish),
+          { type: 'chunk' as const, time: streamTime, chunk: { type: 'block-start' as const, index: 3, blockType: 'text' as const } },
+          { type: 'text-chunks' as const, time0: streamTime, index: 3, dt: [], texts: [MID_TURN_TEXT] },
+          {
+            type: 'chunk' as const,
+            time: streamTime,
+            chunk: { type: 'block-end' as const, index: 3, block: { type: 'text' as const, text: MID_TURN_TEXT } },
+          },
+          ...event.data.stream.slice(finish),
+        ],
+      },
     }
-    const firstSeq = row.seq ?? row.seq0
-    if (firstSeq !== undefined && firstSeq >= 101) break
-    if (row.type === 'assistant/message' && row.seq === 64) {
-      const content = row.data?.content
-      if (!Array.isArray(content)) throw new Error('borrowed step-one assistant message has no content')
-      content.splice(1, 0, { type: 'text', text: MID_TURN_TEXT })
-      kept.push(JSON.stringify(row))
-    } else {
-      kept.push(line)
-    }
-  }
+  })
+  let seq = (kept.at(-1)?.seq ?? -1) + 1
+  let time = (kept.at(-1)?.time ?? -1) + 1
+  const at = (event: Record<string, unknown>): { seq: number; time: number } & Record<string, unknown> => ({
+    ...event,
+    seq: seq++,
+    time: time++,
+  })
   const tail = [
-    { type: 'step/end', seq: 101, time: 1784974102749, data: { turn: 1, step: 2 } },
-    { type: 'turn/end', seq: 102, time: 1784974102750, data: { turn: 1, reason: { kind: 'aborted' } } },
-    { type: 'turn/start', seq: 103, time: 1784974103000, data: { turn: 2, trigger: { kind: 'message', source: { kind: 'user', rpcId: '{{rpcId}}' } } } },
-    { type: 'user/message', seq: 104, time: 1784974103001, data: { content: [{ type: 'text', text: SECOND_PROMPT }], source: { kind: 'user', rpcId: '{{rpcId}}' } }, surfaceOp: 'append' },
-    { type: 'step/start', seq: 105, time: 1784974103002, data: { turn: 2, step: 1 } },
-    { type: 'assistant/message', seq: 106, time: 1784974103003, data: { turn: 2, step: 1, content: [{ type: 'text', text: 'DONE' }], provenance: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } }, sourceEventSeqs: [], surfaceOp: 'append' },
-    { type: 'step/end', seq: 107, time: 1784974103004, data: { turn: 2, step: 1 } },
-    { type: 'turn/end', seq: 108, time: 1784974103005, data: { turn: 2, reason: { kind: 'completed' } } },
+    at({
+      type: 'assistant/attempt',
+      data: {
+        turn: 1,
+        step: 2,
+        stream: [
+          { type: 'chunk', time, chunk: { type: 'block-start', index: 0, blockType: 'reasoning' } },
+          { type: 'reasoning-chunks', time0: time, index: 0, dt: [], texts: ['This path was interrupted.'] },
+          {
+            type: 'chunk',
+            time,
+            chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'This path was interrupted.' } },
+          },
+          { type: 'chunk', time, chunk: { type: 'finish', reason: { kind: 'stop' } } },
+        ],
+      },
+    }),
+    at({ type: 'step/end', data: { turn: 1, step: 2 } }),
+    at({ type: 'turn/end', data: { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } } }),
+    at({ type: 'turn/start', data: { turn: 2 } }),
+    at({
+      type: 'user/message',
+      data: {
+        content: [{ type: 'text', text: SECOND_PROMPT }],
+        source: { kind: 'user' },
+        role: 'user',
+        id: '{{message:98}}',
+      },
+      surfaceOp: 'append',
+    }),
+    at({ type: 'step/start', data: { turn: 2, step: 1 } }),
+    at({
+      type: 'assistant/message',
+      data: {
+        turn: 2,
+        step: 1,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'DONE' }],
+          source: { kind: 'model', provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+          id: '{{message:99}}',
+        },
+        stream: [
+          { type: 'chunk', time: 0, chunk: { type: 'block-start', index: 0, blockType: 'text' } },
+          { type: 'text-chunks', time0: 0, index: 0, dt: [], texts: ['DONE'] },
+          { type: 'chunk', time: 0, chunk: { type: 'block-end', index: 0, block: { type: 'text', text: 'DONE' } } },
+          { type: 'chunk', time: 0, chunk: { type: 'finish', reason: { kind: 'stop' } } },
+        ],
+      },
+      surfaceOp: 'append',
+    }),
+    at({ type: 'step/end', data: { turn: 2, step: 1 } }),
+    at({ type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } }),
   ]
-  return `${[...kept, ...tail.map(row => JSON.stringify(row))].join('\n')}\n`
+  return renderSeedFixture(decoded.headerLine, [...kept, ...tail])
 }
 
 describe('web e2e: message IconActions and clocks on settled history', () => {
@@ -86,7 +153,7 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
-    await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
   }, 120_000)
 
