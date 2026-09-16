@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentCancelCause, InboxTarget } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -11,6 +11,7 @@ import {
   foldScheduleEvents,
 } from '../src/domain.ts'
 import { MAX_TIMER_DELAY_MS, ScheduleRuntime } from '../src/runtime.ts'
+import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 
 const contexts: Context[] = []
 const runtimes: ScheduleRuntime[] = []
@@ -57,12 +58,11 @@ async function harness(): Promise<RuntimeHarness> {
     onFollowup: undefined as (() => void) | undefined,
     idle: Promise.withResolvers<undefined>(),
   }
-  const inbox = new Inbox(session, { inserted: () => {}, discarded: () => {}, claimed: () => {} })
   const agent: Agent = {
     id: session.id,
     options: {},
     session,
-    inbox,
+    inbox: unsupportedInbox(),
     status: 'idle',
     ctx: new Context(),
     send(_message: UserMessage, _target: InboxTarget, _wakeup: boolean) {},
@@ -97,7 +97,10 @@ async function harness(): Promise<RuntimeHarness> {
     steer(_message: UserMessage) {},
     inject(_message: UserMessage) {},
   }
-  const disposeAgent = ctx.agents.register(agent)
+  // Dispatch callbacks remove registry visibility synchronously while the schedule is running.
+  const disposeAgent = ctx.agents.enter(agent, undefined)
+  ctx.effect(() => disposeAgent)
+  await ctx.agents.announce(agent, 'startup')
   ctx.on('session/event', (_session, event) => {
     if (event.type === 'schedule/change' && event.data.operation === 'dispatch') order.push('dispatch')
   })

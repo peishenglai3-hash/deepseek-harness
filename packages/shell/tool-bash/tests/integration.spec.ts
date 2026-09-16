@@ -6,12 +6,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as ToolBash from '@deepseek-ai/dsh-tool-bash'
@@ -27,14 +26,12 @@ import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent
 async function harness(adapter: MockAdapter, sessionRoot?: string, dshHome?: string) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
-  // AgentLoop declares the registry as a required injection.
-  await ctx.plugin(SessionProjectionRegistry)
   if (sessionRoot !== undefined) {
     await ctx.plugin(JsonlSessionPersistence, { root: sessionRoot, compression: 'none' })
   }
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(LocalJobRegistry)
-  await ctx.plugin(ToolTasks)
+  await ctx.plugin(ToolJobs)
   await ctx.plugin(LocalSubprocessRuntime)
   await ctx.plugin(BashEnvPlugin, dshHome === undefined ? {} : { dshHome })
   await ctx.plugin(LocalBashExecutor, { timeoutMs: 10_000 })

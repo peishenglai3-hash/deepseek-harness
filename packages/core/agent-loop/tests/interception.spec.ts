@@ -21,7 +21,7 @@ import { MockAdapter, textResponse, toolCallResponse } from './mock-adapter.ts'
 
 /**
  * The interception points introduced by the hooks taxonomy: `agent/pre-step`,
- * `agent/session-start`, `agent/turn-stopping`, and the
+ * `agent/created`, `agent/turn-stopping`, and the
  * `tools/pre-execute` / `tools/post-execute`
  * split with `additionalContexts` buffering. These verify the canonical event
  * API a hook bridge (or a native plugin) programs against, WITHOUT any
@@ -292,7 +292,8 @@ describe('agent/pre-step', () => {
 
     decision.resolve({ kind: 'enter', messages: claimed })
     await idle
-    expect(agent.inbox.hasPending).toBe(false)
+    expect(agent.inbox.nextTurn).toEqual([])
+    expect(agent.inbox.nextStep).toEqual([])
 
     const staged = events(agent).filter(event =>
       event.type === 'turn/start' || event.type === 'user/message')
@@ -472,7 +473,8 @@ describe('agent/pre-step', () => {
       send(agent, 'blocked prompt')
     }).toThrow('append unavailable')
     expect(events(agent)).toEqual([])
-    expect(agent.inbox.hasPending).toBe(false)
+    expect(agent.inbox.nextTurn).toEqual([])
+    expect(agent.inbox.nextStep).toEqual([])
     expect(agent.status).toBe('idle')
   })
 
@@ -555,30 +557,28 @@ describe('agent/pre-step', () => {
   })
 })
 
-describe('agent/session-start', () => {
+describe('agent/created', () => {
   it('fires once with source "startup" for a fresh create, before the first turn', async () => {
     const adapter = new MockAdapter([textResponse('ok')])
     const ctx = await harness(adapter)
 
     const sources: SessionStartSource[] = []
-    ctx.on('agent/session-start', ({ source }) => void sources.push(source))
+    ctx.on('agent/created', ({ source }) => void sources.push(source))
 
     const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-    // fires synchronously at create, before any turn
     expect(sources).toEqual(['startup'])
     expect(events(agent).some(e => e.type === 'turn/start')).toBe(false)
 
     send(agent, 'go')
     await waitForIdle(ctx, agent)
-    // still only one session-start
     expect(sources).toEqual(['startup'])
   })
 
-  it('a session-start listener can inject context the first request sees', async () => {
+  it('a creation listener can inject context the first request sees', async () => {
     const adapter = new MockAdapter([textResponse('ok')])
     const ctx = await harness(adapter)
 
-    ctx.on('agent/session-start', ({ agent }) => {
+    ctx.on('agent/created', ({ agent }) => {
       agent.inject(createUserMessage({ content: [{ type: 'text', text: 'session preamble' }], source: { kind: 'plugin', plugin: 'test' } }))
     })
 
@@ -593,20 +593,17 @@ describe('agent/session-start', () => {
     expect(ctxMsg?.type === 'user/message' && ctxMsg.data.source).toEqual({ kind: 'plugin', plugin: 'test' })
   })
 
-  it('a throwing session-start listener does not abort agent construction', async () => {
+  it('a throwing creation listener rolls back the agent before its first turn', async () => {
     const adapter = new MockAdapter([textResponse('ok')])
     const ctx = await harness(adapter)
 
-    ctx.on('agent/session-start', () => { throw new Error('session-start hook broke') })
+    const reason = new Error('creation hook broke')
+    ctx.on('agent/created', () => { throw reason })
 
-    // create must not throw — the listener error is contained/logged
-    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-    expect(agent.id).toBe(SessionId('a1'))
-
-    // and the agent still runs
-    send(agent, 'go')
-    await waitForIdle(ctx, agent)
-    expect(adapter.requests).toHaveLength(1)
+    await expect(ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })).rejects.toBe(reason)
+    expect(ctx.agents.list()).toEqual([])
+    expect(ctx.sessions.list()).toEqual([])
+    expect(adapter.requests).toHaveLength(0)
   })
 })
 
@@ -726,7 +723,7 @@ describe('worked example: a native hook plugin is just a cordis plugin on the se
     name: 'native-guard',
     apply(ctx: Context) {
       // 1. SessionStart: seed a standing instruction.
-      ctx.on('agent/session-start', ({ agent, source }) => {
+      ctx.on('agent/created', ({ agent, source }) => {
         agent.inject(createUserMessage({ content: [{ type: 'text', text: `policy active (started: ${source})` }], source: { kind: 'plugin', plugin: 'native-guard' } }))
       })
       // 2. PreStep: reject a forbidden prompt, annotate the rest.

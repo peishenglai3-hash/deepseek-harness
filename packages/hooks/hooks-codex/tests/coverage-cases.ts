@@ -13,13 +13,16 @@ import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-test
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as HooksCodex from '@deepseek-ai/dsh-hooks-codex'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 const testToolSignal = new AbortController().signal
 
 const dirs: string[] = []
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }) })
+const contexts: Context[] = []
+afterEach(async () => {
+  for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+})
 function dir(): string { const d = mkdtempSync(join(tmpdir(), 'dsh-hx-cov-')); dirs.push(d); return d }
 function sh(d: string, name: string, body: string): string {
   const p = join(d, name); writeFileSync(p, body); chmodSync(p, 0o755); return p
@@ -31,8 +34,8 @@ function hooks(d: string, h: unknown): string {
 type HarnessOpts = { stderrSummaryMaxChars?: number; sessionRoot?: string }
 async function harness(configPath: string, adapter: MockAdapter, opts: HarnessOpts = {}): Promise<Context> {
   const ctx = new Context()
+  contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
-  await ctx.plugin(SessionProjectionRegistry)
   if (opts.sessionRoot !== undefined) await ctx.plugin(JsonlSessionPersistence, { root: opts.sessionRoot })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(LocalSubprocessRuntime)
@@ -309,7 +312,6 @@ export function defineCoverageCases(groups: CoverageGroup | readonly CoverageGro
       const adapter = new MockAdapter([textResponse('ok')])
       const ctx = new Context()
       await mountAgentLoopTestDependencies(ctx)
-      await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(LocalBashExecutor, { timeoutMs: 10_000 })
@@ -356,10 +358,18 @@ export function defineCoverageCases(groups: CoverageGroup | readonly CoverageGro
       const adapter = new MockAdapter([textResponse('ok')])
       const ctx = await harness(join(d, 'hooks.json'), adapter)
       const warn = vi.fn(); ctx.logger.warn = warn as never
-      const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-      agent.inject = (() => { throw new Error('inject boom') })
-      await waitFor(() => warn.mock.calls.some(c => String(c[0]).includes('SessionStart hook failed')))
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('SessionStart hook failed'))
+      try {
+        await ctx.agents.create({
+          sessionId: SessionId('a1'),
+          agentOptions: { provider: 'mock', model: 'mock' },
+          setup(_agentCtx, agent) {
+            vi.spyOn(agent, 'inject').mockImplementationOnce(() => { throw new Error('inject boom') })
+          },
+        })
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('SessionStart hook failed'))
+      } finally {
+        await ctx.fiber.dispose()
+      }
     })
   })
 
@@ -620,7 +630,6 @@ export function defineCoverageCases(groups: CoverageGroup | readonly CoverageGro
       const adapter = new MockAdapter([toolCallResponse('c1', 'Bash', { command: 'x' }), textResponse('done')])
       const ctx = new Context()
       await mountAgentLoopTestDependencies(ctx)
-      await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(LocalBashExecutor, { timeoutMs: 10_000, cwd: serverDir })

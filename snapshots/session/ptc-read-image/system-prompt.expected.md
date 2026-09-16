@@ -29,8 +29,6 @@ Use goal tools for one long-running completion objective in the current session.
 
 Use the workflow tool ONLY when the user explicitly asks for a workflow or for large multi-agent orchestration: you write a JavaScript script (the tool description documents the exact format) that fans work out across many subagents with phases and structured results. For one or two delegations, prefer plain subagent calls.
 
-Use the ralph tool ONLY when the direct human explicitly asks for a Ralph loop or fresh-agent iterative execution. Each Ralph round starts a fresh child with no conversation seed and uses the shared workspace as durable memory. Completion and blockers are worker reports, not independent evaluation. Use same-session goal tools for ordinary long-running objectives, and plain subagents or workflows for bounded delegation and fan-out.
-
 Use subagent in the background by default. Start independent delegations together in one assistant message and continue useful work while they run. Set `run_in_background: false` only when your next action depends on that subagent's result. When a background run settles, the runtime sends you a notice containing its outcome and any final assistant message.
 
 ## Writing code for run_code
@@ -142,13 +140,6 @@ interface ToolArgsMap {
     /** children (default) lists direct children only; descendants walks the complete tree below you. */
     scope?: "children" | "descendants";
   } & Record<string, JsonValue>;
-  /** Run a foreground fresh-agent Ralph loop toward one immutable objective. Use only when the direct human explicitly asks for Ralph or fresh-agent iteration. Each round opens a new child with no parent conversation or prior child session; the shared workspace is long-term memory, and only a bounded structured report crosses rounds. The call returns when a worker reports completion or a concrete blocker, or at the round limit. Ordinary long-running same-session work belongs to goal tools. */
-  ralph: {
-    /** The immutable completion objective for every fresh Ralph round. */
-    objective: string;
-    /** Optional positive safe-integer round cap, bounded by the deployment ceiling. */
-    maxRounds?: number;
-  } & Record<string, JsonValue>;
   /** Read a UTF-8 text file and return line-numbered content. */
   read: {
     /** Path to read, resolved by the filesystem backend. */
@@ -174,23 +165,6 @@ interface ToolArgsMap {
   skill: {
     /** The exact skill name from the available skills list. */
     name: string;
-  } & Record<string, JsonValue>;
-  /** Custom editing tool for viewing, creating and editing files * State is persistent across command calls and discussions with the user * If `path` is a file, `view` displays the result of applying `cat -n`. If `path` is a directory, `view` lists non-hidden files and directories up to 2 levels deep * The `create` command cannot be used if the specified `path` already exists as a file * If a `command` generates a long output, it will be truncated and marked with `<response clipped>` * A null placeholder for a parameter unused by the selected command is treated as omitted. Required parameters still need values; omit `str_replace.new_str` rather than setting it to null when deleting a match Notes for using the `str_replace` command: * The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces! * If the `old_str` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in `old_str` to make it unique * The `new_str` parameter should contain the edited lines that should replace the `old_str` */
-  str_replace_editor: {
-    /** The commands to run. Allowed options are: `view`, `create`, `str_replace`, `insert`. */
-    command: "view" | "create" | "str_replace" | "insert";
-    /** Absolute path to file or directory, e.g. `/repo/file.py` or `/repo`. */
-    path: string;
-    /** Required string parameter of `create` command, with the content of the file to be created. A null placeholder is treated as omitted by commands that do not use this parameter. */
-    file_text?: string | null;
-    /** Required integer parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`. A null placeholder is treated as omitted by commands that do not use this parameter. */
-    insert_line?: number | null;
-    /** Optional string parameter of `str_replace` command containing the new string (if omitted, no string will be added). Required string parameter of `insert` command containing the string to insert. A null placeholder is accepted only by commands that do not use this parameter. */
-    new_str?: string | null;
-    /** Required string parameter of `str_replace` command containing the string in `path` to replace. A null placeholder is treated as omitted by commands that do not use this parameter. */
-    old_str?: string | null;
-    /** Optional parameter of `view` command when `path` points to a file. If omitted or null, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file. */
-    view_range?: number[] | null;
   } & Record<string, JsonValue>;
   /** Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. Give it a complete, standalone prompt: it does not see this conversation. This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When that run settles, the runtime sends the parent a notice containing its outcome and any final assistant message; `send_message` steers the child's nearest step while it is running and starts a turn while it is idle. Set `run_in_background: false` only when your next action depends on receiving the result. */
   subagent: {
@@ -414,11 +388,6 @@ interface ToolOutputMap {
     parent?: string;
     depth?: number;
   })[];
-  ralph: {
-    runId: string;
-    agentsStarted: number;
-    result: JsonValue;
-  };
   read: {
     path: string;
     offset: number;
@@ -461,7 +430,6 @@ interface ToolOutputMap {
     };
     content: string;
   };
-  str_replace_editor: string;
   subagent: {
     kind: "background";
     jobId: string;

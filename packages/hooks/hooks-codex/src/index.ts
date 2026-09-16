@@ -4,8 +4,7 @@
  * matchers, snake_case payloads without a trailing newline, no hook environment
  * or command substitution, and no pre-tool approval or rewrite path; only
  * blocking decisions are honored. Shared execution and parsing live in
- * `dsh-hook-protocol`; see the
- * [hook-bridges Agent Note](../../../../.agents/notes/implemented/feature/2026-06-30-hook-bridges.md).
+ * `dsh-hook-protocol`.
  * @module @deepseek-ai/dsh-hooks-codex
  */
 
@@ -182,16 +181,16 @@ export function apply(ctx: Context, config: Config): void {
     return [ours, ...theirs ?? []]
   }
 
-  // SessionStart injects plain stdout when its detached hook resolves; a slow
-  // hook may miss the first request.
-  // TODO(session-start-gating): add a startup gate before promising first-turn delivery.
-  ctx.on('agent/session-start', ({ agent, source }) => {
-    detached.track(runPoint('SessionStart', source, { ...base(agent, 'SessionStart', model), source }, { agent, plainStdoutAsContext: true, signal: detached.signal })
+  ctx.on('agent/created', async ({ agent, source, signal }) => {
+    const ownerSignal = signal === undefined ? detached.signal : AbortSignal.any([signal, detached.signal])
+    const run = runPoint('SessionStart', source, { ...base(agent, 'SessionStart', model), source }, { agent, plainStdoutAsContext: true, signal: ownerSignal })
       .then((merged) => {
         const context = contextFrom(merged)
         if (context) agent.inject(context)
       })
-      .catch((error: unknown) => { ctx.logger.warn(`hooks-codex: SessionStart hook failed: ${String(error)}`) }))
+      .catch((error: unknown) => { ctx.logger.warn(`hooks-codex: SessionStart hook failed: ${String(error)}`) })
+    detached.track(run)
+    await run
     /* jscpd:ignore-end */
   })
 
